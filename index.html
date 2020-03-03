@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+</head>
+<body>
+<h1> Hey </h1>
+<script>
+/******************************************************************************************
+ * 
+ * Cubix 2! - Ryan Kee
+ * Do NOT remove or change credit in any way
+ * 
+ * Created 12/20/14
+ * 
+ * NOTICE: HUGE CREDIT TO THOMAS L. FOR HIS CAMERA FUNCTION:
+ * https://www.khanacademy.org/profile/voidx/programs
+ * 
+ * Thank you everyone for the encouraging feedback! 
+ * 
+ * I started working on this project with a group called Fast Clocks Programming, and we are making a game called Solar System 68. My job was to create Planet 1, and it turned out better than I expected, so I turned it into Cubix 2!(Will still be used for SS 68). Enjoy!
+ * 
+ * Our HQ:
+ *https://www.khanacademy.org/computer-programming/fast-clocks-programming-group/5098905531580416
+ * 
+ * TODO:
+ * finish levels
+ * fix some glitches with the teleporters
+ * add secret coins
+ * 
+******************************************************************************************/
+
+// transparent screen
+var transparency=255;
+var screenColor=[255,255,255];
+
+// key events
+var keys=[];
+keyPressed=function(){
+    keys[keyCode]=true;
+};
+keyReleased=function(){
+    keys[keyCode]=false;
+};
+
+// mouse events
+var mouse=[];
+mousePressed=function(){
+    mouse[mouseButton]=true;
+};
+mouseReleased=function(){
+    mouse[mouseButton]=false;
+    return true;
+};
+
+// rect with rect collision
+var collide=function(obj1,obj2){
+    return obj1.x<obj2.x+obj2.w&&obj1.x+obj1.w>obj2.x&&
+           obj1.y<obj2.y+obj2.h&&obj1.y+obj1.h>obj2.y;
+};
+
+// Credit to Thomas L. for the Camera function
+var Camera = function(x, y, w, h, viewX, viewY, levelWidth, levelHeight, speed){
+    // Viewport on canvas
+    this.x = x;
+    this.y = y;
+    this.w  = w;
+    this.h = h;
+    
+    // Inside the viewport
+    this.viewX = viewX;
+    this.viewY = viewY;
+    this.levelWidth = levelWidth;
+    this.levelHeight = levelHeight;
+    
+    this.speed = this.speed || speed; // the lower the number, the faster the speed
+};
+
+Camera.prototype.follow = function(ent) {
+    var x = -ent.x+this.x+(this.w/2)-(ent.w/2);
+    var y = -ent.y+this.y+(this.h/2)-(ent.h/2);
+    var a = atan2(y-this.viewY, x-this.viewX);
+    var v = dist(x, y, this.viewX, this.viewY) / this.speed;
+    
+    this.viewX += v*cos(a);
+    this.viewY += v*sin(a);
+
+    var width  = this.x + this.w  - this.levelWidth;
+    var height = this.y + this.h - this.levelHeight;
+    
+    this.viewX = min(this.viewX, this.x);
+    this.viewX = max(this.viewX, width);
+    this.viewY = min(this.viewY, this.y);
+    this.viewY = max(this.viewY, height);
+};
+
+Camera.prototype.view = function(ent) {
+    var viewX = -this.viewX+this.x,
+        viewY = -this.viewY+this.y,
+        viewW = ent.w-this.w,
+        viewH = ent.w-this.h;
+
+    if(ent.x >  viewX-ent.w &&
+       ent.x <  viewX-viewW+ent.w && 
+       ent.y >  viewY-ent.h &&
+       ent.y <  viewY-viewH+ent.h)
+    {
+        var camView = {
+            x: (this.viewX+ent.x),
+            y: (this.viewY+ent.y),
+            w: ent.w,
+            h: ent.h,
+            cam: this
+        };
+        
+        return camView;
+    }
+};
+
+// Button object
+var button=function(x,y,w,h,message,txtSize){
+    var m={x:mouseX,y:mouseY,w:1,h:1}; 
+    var self={x:x,y:y,w:w,h:h};
+    if(collide(m,self)){
+        fill(100, 100, 100,100);
+    }else{
+        fill(150, 150, 150,100);
+    }
+    strokeWeight(((w+h)/2)/15);
+    rect(x,y,w,h,5);
+    
+    fill(0, 0, 0);
+    textAlign(CENTER,CENTER);
+    textSize(txtSize);
+    text(message,x+w/2,y+h/2);
+    
+    if(collide(m,self)&&mouse[LEFT]&&mouseReleased()){
+        return true;
+    }
+};
+
+// Player object
+var Player=function(x,y,w,h,keyInputs,color){
+    this.x=x; // position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+    
+    this.keyInputs=keyInputs;
+    this.color=color;
+    
+    this.velx=0; // velocity and speed stuff
+    this.vely=0;
+    this.maxSpeed=3;
+    this.accel=0.25;
+    
+    this.jumping=false; // jumping stuff
+    this.jumpHeight=8;
+    this.gravity=0.4;
+    
+    this.health=100; // other
+    this.dead=false;
+    this.deathCounter=0;
+    this.particles=[];
+};
+
+Player.prototype.update=function(blocks,fallBlocks){
+    if(!this.dead){
+        // update player's position when NOT dead
+        if(keys[this.keyInputs[0]]){
+            this.velx+=this.accel;
+        }
+        if(keys[this.keyInputs[1]]){
+            this.velx-=this.accel;
+        }
+        
+        if(keys[this.keyInputs[2]]&&!this.jumping){
+            this.vely=-this.jumpHeight;
+            this.jumping=true;
+        }
+        
+        if(!keys[this.keyInputs[0]]&&!keys[this.keyInputs[1]]){
+            if(this.velx>0){
+                this.velx-=this.accel;
+            }
+            if(this.velx<0){
+                this.velx+=this.accel;
+            }
+        }
+        
+        if(Math.abs(this.velx)>this.maxSpeed){
+            if(this.velx>0){
+                this.velx=this.maxSpeed;
+            }
+            if(this.velx<0){
+                this.velx=-this.maxSpeed;
+            }
+        }
+    
+        this.x+=this.velx;
+        this.applyCollision(blocks,this.velx,0); // apply speed and collisions
+        this.applyCollision(fallBlocks,this.velx,0);
+        
+        this.jumping=true;
+        this.y+=this.vely;
+        this.applyCollision(blocks,0,this.vely);
+        this.applyCollision(fallBlocks,0,this.vely);
+        this.vely+=this.gravity;
+    }
+    
+    if(this.health<=0){
+        this.dead=true;
+    }
+};
+
+Player.prototype.applyCollision=function(obj,velx,vely){
+    for(var i=0; i<obj.length; i++){
+        if(collide(this,obj[i])){ // handle collisions
+            if(vely>0){
+                this.vely=0;
+                this.jumping=false;
+                this.y=obj[i].y-this.h;
+            }
+            if(vely<0){
+                this.vely=0;
+                this.jumping=true;
+                this.y=obj[i].y+obj[i].h;
+            }
+            if(velx<0){
+                this.velx=0;
+                this.x=obj[i].x+obj[i].w;
+            }
+            if(velx>0){
+                this.velx=0;
+                this.x=obj[i].x-this.w;
+            }
+        }
+    }
+};
+
+Player.prototype.draw= function(cam) {
+    var view=cam.view(this);
+    noStroke();
+    
+    if(view&&!this.dead){
+        // draw the player
+        fill(this.color);
+        rect(view.x,view.y,view.w,view.h);
+        this.particles.length=0;
+    }else if(view&&this.dead){
+        if(this.particles.length<20){ // death animation
+            this.particles.push(
+                {
+                    x:view.x+view.w/2,
+                    y:view.y+view.h/2,
+                    w:view.w/10,
+                    h:view.h/10,
+                    velx:random(-2,2),
+                    vely:-3,
+                    gravity:0.4,
+                    angle:random(-90,-270),
+                    color:this.color
+                }
+            );
+        }
+        
+        for(var i=0; i<this.particles.length; i++){
+            var p=this.particles[i];
+            // draw the particles
+            fill(p.color);
+            rect(p.x,p.y,p.w,p.h);
+            
+            p.x+=p.velx;
+            p.y+=p.vely; // apply forces
+            p.vely+=p.gravity;
+        }
+    }
+};
+
+// status bar
+Player.prototype.stats=function(){
+    noStroke();
+    
+    fill(50, 50, 50,100);
+    rect(0,0,width,height/13);
+    
+    fill(0, 0, 0);
+    textAlign(LEFT,LEFT);
+    textSize(((width+height)/2)/25);
+    text("Health: "+this.health,15,height/13-10);
+};
+
+// store "Player"s in an array
+var players=[];
+players.add=function(x,y,w,h,keyInputs,color){
+    this.push(new Player(x,y,w,h,keyInputs,color));
+};
+players.apply=function(cam,blocks,fallBlocks){
+    for(var i=0; i<this.length; i++){
+        this[i].update(blocks,fallBlocks);
+        this[i].draw(cam);
+        this[i].stats();
+    }
+};
+
+// Block object
+var Block=function(x,y,w,h,color){
+    this.x=x; // block's position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+    this.color=color; // block's color
+};
+
+Block.prototype.draw= function(cam) {
+    noStroke();
+    
+    var view=cam.view(this);
+    if(view){ // if visible
+        // draw the blocks
+        fill(this.color);
+        rect(view.x,view.y,view.w,view.h);
+    }
+};
+
+// store "Block"s in an array
+var blocks=[];
+blocks.add=function(x,y,w,h,color){
+    this.push(new Block(x,y,w,h,color));
+};
+blocks.apply=function(cam){
+    for(var i=0; i<this.length; i++){
+        this[i].draw(cam);
+    }
+};
+
+// Fallblock object
+var FallBlock=function(x,y,w,h,color){
+    Block.call(this,x,y,w,h,color);
+    this.gravity=0.1;
+    this.vely=0;
+    this.falling=false;
+};
+
+FallBlock.prototype.update=function(players,fallBlocks){
+    for(var i=0; i<players.length; i++){
+        if( players[i].y+players[i].h>=this.y&&players[i].y+players[i].h<this.y+this.h&&
+            players[i].x+players[i].w>=this.x&&players[i].x<=this.x+this.w){ // if the player is resting on the block then turn "this.falling" to true
+            this.falling=true;
+        }
+    }
+    
+    if(this.falling){
+        this.y+=this.vely; // apply velocity(speed) to the block's y position
+        this.vely+=this.gravity; // apply acceleration to velocity(speed)
+    }
+};
+
+FallBlock.prototype.draw= function(cam) {
+    var view=cam.view(this);
+    
+    if(view){
+        // draw the falling block
+        fill(this.color);
+        rect(view.x,view.y,view.w,view.h);
+    }
+};
+
+// store "FallBlock"s in an array
+var fallBlocks=[];
+fallBlocks.add=function(x,y,w,h,color){
+    this.push(new FallBlock(x,y,w,h,color));
+};
+fallBlocks.apply=function(cam,players){
+    for(var i=0; i<this.length; i++){
+        this[i].update(players,fallBlocks);
+        this[i].draw(cam);
+    }
+};
+
+// Spike object
+var Spike=function(x,y,w,h){
+    this.x=x; // spike's position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+};
+
+Spike.prototype.update=function(players){
+    for(var i=0; i<players.length; i++){
+        if(collide(this,players[i])&&!players[i].dead){ // if the player and spike collide
+            screenColor=[255,0,0];
+            transparency=100; // give a red transparent screen
+            players[i].vely=-players[i].jumpHeight; // make the player hop
+            players[i].health-=5;
+        }
+    }
+};
+
+Spike.prototype.draw= function(cam) {
+    var view=cam.view(this);
+    
+    if(view){
+        // draw the spike
+        fill(50, 150, 150);
+        triangle(view.x,view.y+view.h,view.x+view.w,view.y+view.h,view.x+view.w/2,view.y);
+    }
+};
+
+// store "Spike"s in an array
+var spikes=[];
+spikes.add=function(x,y,w,h){
+    this.push(new Spike(x,y,w,h));
+};
+spikes.apply=function(cam,players){
+    for(var i=0; i<this.length; i++){
+        this[i].update(players);
+        this[i].draw(cam);
+    }
+};
+
+// Portal object
+var Portal=function(x,y,w,h){
+    this.x=x; // portal's position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+    
+    this.complete=false; // has the fading screen "complete"d?
+};
+
+Portal.prototype.update=function(players){
+    screenColor=[255,255,255]; // turn the transparent screen white
+    for(var i=0; i<players.length; i++){
+        if(collide(this,players[i])&&!this.complete){
+            transparency+=5;
+        }
+        else if(transparency>0&&!this.complete&&!collide(this,players[i])){
+            transparency-=5;
+        }
+    }
+    if(transparency>255){
+        this.complete=true;
+    }
+};
+
+Portal.prototype.draw= function(cam) {
+    var view=cam.view(this);
+    
+    if(view){
+        // draw the portal
+        fill(0, 255, 234);
+        rect(view.x,view.y,view.w,view.h);
+    }
+};
+
+// store "Portal"s in an array
+var portals=[];
+portals.add=function(x,y,w,h){
+    this.push(new Portal(x,y,w,h));
+};
+portals.apply=function(cam,players){
+    for(var i=0; i<this.length; i++){
+        this[i].update(players);
+        this[i].draw(cam);
+    }
+};
+
+// Sign object
+var Sign=function(x,y,w,h,message){
+    this.x=x; // sign's position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+    this.message=message; // the sign's message
+};
+
+Sign.prototype.draw= function(cam,players) {
+    var view=cam.view(this);
+    
+    if(view){
+        noStroke();
+        
+        // draw the sign
+        fill(200, 100, 0);
+        rect(view.x,view.y,view.w,view.h);
+        
+        fill(255, 255, 255);
+        rect(view.x+view.w/8,view.y+view.h/8,view.w/1.35,view.h/1.35);
+        
+        fill(0, 0, 0);
+        textSize(3);
+        textAlign(CENTER,CENTER);
+        textLeading(5);
+        text("bhdawjlvafv\ncddgakjdc\nvgdawkcc",view.x+view.w/2,view.y+view.h/2); // lol XD
+        
+        for(var i=0; i<players.length; i++){
+            if(collide(this,players[i])){ // if the player and sign collide view the image
+                fill(0, 0, 0);
+                textAlign(CENTER,CENTER);
+                textSize(12);
+                text(this.message,view.x+view.w/2,view.y-view.h/1.5);
+            }
+        }
+    }
+};
+
+// store "Sign"s in an array
+var signs=[];
+signs.on=0; // keep track of the sign's messages
+signs.mem=signs.on;
+signs.add=function(x,y,w,h,message){
+    this.push(new Sign(x,y,w,h,message));
+    this.on++;
+};
+signs.apply=function(cam,players){
+    for(var i=0; i<this.length; i++){
+        this[i].draw(cam,players);
+    }
+};
+
+// Monster object
+var Monster=function(x,y,w,h,color){
+    this.x=x; // monster's position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+    this.color=color; // monster's color
+    
+    this.dead=false; // is the monster "dead"?
+    this.velx=0; // monster's speed
+    this.direction=1; // what direction is the monster heading?
+    this.angle=0; // the monster's eye's angle
+};
+
+Monster.prototype.update=function(players,blocks){
+    if(!this.dead){
+        for(var i=0; i<players.length; i++){
+            if(collide(this,players[i])&&!players[i].jumping&&!this.dead&&!players[i].dead){
+                players[i].health-=5;
+                screenColor=[255,0,0]; // red transparent screen
+                transparency=100;
+            }else if(collide(this,players[i])&&players[i].vely>0&&players[i].jumping){
+                this.dead=true; // the monster is "dead"
+                players[i].vely=-players[i].jumpHeight; // make the player hop 
+            }
+            this.angle=atan2(this.x-players[i].x,players[i].y-this.y);
+        }
+        
+        for(var i=0; i<blocks.length; i++){
+            if(collide(this,blocks[i])){
+                this.velx*=-1; // reverse the speed
+                this.direction*=-1; // change direction
+            }
+        }
+        
+        if(Math.abs(this.velx)>2){
+            if(this.velx>0){
+                this.velx=2;
+            }
+            if(this.velx<0){
+                this.velx=-2;
+            }
+        }
+        
+        if(this.direction===1){
+            this.velx=1;
+        }else if(this.direction===-1){
+            this.velx=-1;
+        }
+        
+        this.x+=this.velx;
+    }
+};
+
+Monster.prototype.draw= function(cam) {
+    var view=cam.view(this);
+    
+    if(view&&!this.dead){
+        // draw the monster
+        fill(this.color);
+        rect(view.x,view.y,view.w,view.h,Math.abs(cos(frameCount*2))*10); // main body
+        
+        fill(255, 255, 255);
+        ellipse(view.x+view.w/2,view.y+view.h/2,view.w/2,view.h/2); // the white of the eye
+        
+        // the pupil
+        pushMatrix();
+        translate(view.x+view.w/2,view.y+view.h/2);
+        rotate(this.angle+40);
+        fill(0, 0, 0);
+        ellipseMode(CORNER);
+        ellipse(0,0,view.w/5,view.h/5);
+        ellipseMode(CENTER);
+        popMatrix();
+    }
+};
+
+// store "Monster"s in an array
+var monsters=[];
+monsters.add=function(x,y,w,h,color){
+    this.push(new Monster(x,y,w,h,color));
+};
+monsters.apply=function(cam,players,blocks){
+    for(var i=0; i<this.length; i++){
+        this[i].update(players,blocks);
+        this[i].draw(cam);
+    }
+};
+
+// Lava object
+var Lava=function(x,y,w,h){
+    this.x=x; // lava's position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+    this.noiseValue=random(0,1);
+    this.frame=0;
+};
+Lava.prototype.draw= function(cam) {
+    var view=cam.view(this);
+    this.frame++;
+    if(view){
+        // draw the lava block
+        noStroke();
+        fill(1+noise((abs(sin(this.frame))), this.noiseValue)*255,0,0);
+        rect(view.x,view.y,view.w,view.h);
+    }
+};
+
+Lava.prototype.update=function(players){
+    for(var i=0; i<players.length; i++){
+        if(collide(this,players[i])&&!players[i].dead){
+            players[i].health-=5; 
+            screenColor=[255,0,0]; // red transparent screen
+            transparency=50;
+        }
+    }
+};
+
+// store "Lava"s in an array
+var lava=[];
+lava.add=function(x,y,w,h){
+    this.push(new Lava(x,y,w,h));    
+};
+lava.apply=function(cam,players){
+    for(var i=0; i<this.length; i++){
+        this[i].draw(cam);
+        this[i].update(players);
+    }
+};
+
+// Water object
+var Water=function(x,y,w,h){
+    this.x=x; // water blocks's position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+};
+
+Water.prototype.update=function(cam,players){
+    for(var i=0; i<players.length; i++){
+        if(collide(this,players[i])){
+            players[i].gravity=0; // get rid of acceleration
+            players[i].vely=1; 
+            // limit the player's velocity
+            if(keys[players[i].keyInputs[0]]){
+                players[i].velx=1;
+            }
+            if(keys[players[i].keyInputs[1]]){
+                players[i].velx=-1;
+            }
+            if(!keys[players[i].keyInputs[2]]){
+                players[i].jumping=false;
+            }
+            if(players[i].jumping&&collide(this,players[i])){
+                players[i].vely=-1;
+            }
+        }else{
+            players[i].gravity=0.4; // reset acceleration
+        }
+    }
+};
+
+Water.prototype.draw= function(cam) {
+    var view=cam.view(this);
+    
+    // draw the water block
+    if(view){
+        noStroke();
+        
+        fill(0, 100, 255,150);
+        rect(view.x,view.y,view.w,view.h);
+    }
+};
+
+// store "Water"s in an array
+var water=[];
+var space=[];/* We don't want to see
+                the background through
+                the water! cover it with
+                a white block
+             */
+water.add=function(x,y,w,h){
+    this.push(new Water(x,y,w,h));
+    space.add(x,y,w,h);
+};
+water.apply=function(cam,players){
+    for(var i=0; i<this.length; i++){
+        this[i].update(cam,players);
+        this[i].draw(cam);
+    }
+};
+
+space.add=function(x,y,w,h){
+    this.push(
+        {
+            x:x,
+            y:y,
+            w:w,
+            h:h
+        }
+    );
+};
+space.apply=function(cam){
+    for(var i=0; i<this.length; i++){
+        noStroke();
+        
+        var view=cam.view(this[i]);
+        
+        if(view){
+            // draw the blank block
+            fill(255, 255, 255);
+            rect(view.x,view.y,view.w,view.h);
+        }
+    }
+};
+
+// Teleporter object
+var Teleporter=function(x,y,w,h,id){
+    this.x=x; // teleporter's position and dimensions
+    this.y=y;
+    this.w=w;
+    this.h=h;
+    this.id=id;/* give two other teleporters identical identifiers
+                    so it knows which teleporter to connect to   
+               */
+    this.timer=0; // keep track of how long the player has been on the teleporter
+    this.orbs=[]; // store orbs in an array
+};
+
+Teleporter.prototype.update=function(players,teleporters,cam){
+    var view=cam.view(this);
+    
+    for(var i=0; i<players.length; i++){
+    for(var p=0; p<teleporters.length; p++){
+        if(collide(this,players[i])&&this.id===teleporters[p].id){ // teleport to the right one
+            this.timer++; // increment the timer
+            while(this.orbs.length<10){ // push only ten orbs
+                this.orbs.push({
+                    x:view.x+view.w/2,
+                    y:view.y+view.h/2,
+                    w:random(2,4),
+                    h:random(2,4),
+                    angle:random(360),
+                    color:color(0,random(100,15),random(200,255))
+                });
+            }
+            if(this.timer>400&&!collide(teleporters[p],players[i])){
+                players[i].x=teleporters[p].x;
+                players[i].y=teleporters[p].y;
+                this.timer=0;
+            }
+        }else{
+            this.orbs.length=0;
+        }
+    }
+    }
+};
+
+Teleporter.prototype.draw= function(cam) {
+    var view=cam.view(this);
+    
+    noStroke();
+    // draw the teleporter
+    if(view){
+        fill(0, 100, 255, 200);
+        rect(view.x,view.y,view.w,view.h);
+        
+        for(var i=0; i<this.orbs.length; i++){
+            var o=this.orbs[i];
+            // draw the orbs
+            fill(o.color);
+            ellipse(o.x,o.y,o.w,o.h);
+            
+            o.angle+=5;
+            
+            if(cos(o.angle)<0.1&&cos(o.angle)>-0.1){
+                o.x=view.x+view.w/2;
+            }
+            if(sin(o.angle)<0.1&&sin(o.angle)>-0.1){
+                o.y=view.y+view.h/2;
+            }
+            
+            o.x+=cos(o.angle)*o.w;
+            o.y-=sin(o.angle)*o.h;
+        }
+    }
+};
+
+// store "Teleporter"s in an array
+var teleporters=[];
+teleporters.on=0; // keep track of the teleporter's identifiers
+teleporters.add=function(x,y,w,h,id){
+    this.push(new Teleporter(x,y,w,h,id));
+    if(this.length%2===0){
+        this.on++; // only increment every two 
+    }
+};
+
+teleporters.apply=function(cam,players){
+    for(var i=0; i<this.length; i++){
+        this[i].update(players,this,cam);
+        this[i].draw(cam);
+    }
+};
+
+// manage objects
+var objects=[players,blocks,fallBlocks,spikes,portals,signs,monsters,lava,water,space,teleporters];
+// remove objects
+objects.remove=function(){
+    for(var i=0; i<objects.length; i++){
+    for(var j=0; j<objects[i].length; j++){
+        objects[i].splice(j,objects[i].length);
+    }
+    }
+};
+
+var Game=function(){
+    // game levels
+    this.levels=[
+        [
+            [
+                "       ##############      ",
+                "       ##############      ",
+                "                           ",
+                "       ## # # # # # # #    ",
+                "       A A A A A A A A   # ",
+                "       ################    ",
+                "  @ S                     #",
+                "######                    #",
+                "                         ##",
+                "          S            #   ",
+                "        # #    #     #     ",
+                " P S  # # #AAAA## S     ! #",
+                "####### # #################",
+                "####### # #################"
+            ],
+            [
+                "                                              #  #",
+                "                                              # @#",
+                "                                              # ##",
+                "                                       ##     #  #",
+                "                                  # ! ###     ## #",
+                "                              #   #######     #  #",
+                "                             ##       ###     # ##",
+                " PS                   A     ###       ######ww#  #",
+                "###ww#LLLLLLLLL#w#  # # #######       ###wwwww## #",
+                "###ww###########w#          #         ###wwwww#  #",
+                "###wwwwwwwwwwwwww#          #         ###wwwww#w##", 
+                "###wwwwwwwwwwwwww#          #         ###wwwww#w##",
+                "##################          #! ! !S! !###wwwwwww##",
+                "##################LLLLLLLLLL######################",
+                "##################################################"
+            ],
+            [
+                "##################################################",
+                "#                                                 ",
+                "#                                                 ",
+                "# P S                           S     # !!!! #  @ ",
+                "######FFFFFFFFFFFFFFFFFFFFFFFF####################",
+                "                                                  ",
+                "                                                  ",
+                "                                                  ",
+                "                                                  ",
+                "                                                  ",
+                "                                                  ",
+                "                                                  ",
+                "                                                  ",
+                "                                                  "
+            ],
+            [
+                "                                    #                     ",
+                "                                  ###                     ",
+                "                                #####                  @  ",
+                "                                #####   ##################",
+                "  P        AA S                 #####                    #",
+                "#####LLLL######wwwwwwwwwwwwwwwww######wwwwwwwwwwwwwwwwwww#",
+                "###############wwwwwwwwwwwwww#########awwwwwmwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwwwwwwwwwww########wwwwwwwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwwwwwwwwww#########wwwwwwwwwwwmwwwwww#",
+                "#wwwwwwwwwwwmwwwwwwwwwwwwwwwwwww#######awwwwwwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwmwwwwwwwww#########wwwmwwwwwwwwwwwww#",
+                "#wwwwwwwwwwmwwwwwwwwwwwwwwwwwww#########awwwwwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwwwwwwwwww###########wwwwwwmwwwwwwwmw#",
+                "#wwwwwmwwwwwwwwwwwwwwwwwwwwwwaw#########awwwwwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwwwwwwwww#############wwwwwwwwwwwwmww#",
+                "#wwwwwwwwwwwmwwwwwwwwwwwwwwwwww##########wwwwwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwwwwwwwwaw###########wawwwmwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwmwwwwwwwwww###############wwwwwwwwwwwwmw#",
+                "#wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwa##########wwwwwwwwwwwwwww#",
+                "#wwwwwwwwwmwwwwwwwwwwwwwwwwwww###########aawwwwwmwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwwwwwwwwwww############awwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwmwwwwwwwwwwwwa#############wwwwwwwwwwwww#",
+                "#wwwwwwwwwmwwwwwwwwwwwwwwwwwww##############wwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww#",
+                "#wwwwwwwwwwwwwwwwwwwwwmwwwwwwwwwmwwwwwwwwwwwwwwwwwwwwwwww#",
+                "#wwwwwwawwwawwwwwaawwawawawwawwawwaawwawawwwawwwawawwwwaw#",
+                "##########################################################"
+            ],
+            [
+                "                            ",
+                "                            ",
+                "                            ",
+                "          #                 ",
+                "          #                 ",
+                "          #        # ! # @  ",
+                "          #        #######  ",
+                "          #     ###         ",
+                " P AA S T # T               ",
+                "#################FFFFF###### #",
+                "                            ",
+                "                            ",
+                "                            ",
+                "                            "
+            ],
+            [
+                "                                     #",
+                "                                     #",
+                "      A                              #",
+                " P    #  ! ! #                       #",
+                "####LL########       #FF#       #### #",
+                "   ######       FF                 # #",
+                " @ T#                     FFF      # #",
+                "#####                              # #",
+                "#                            # !!! # #",
+                "#                            ####### #",
+                "#                            #       #",
+                "#                            # #######",
+                "#                            # #     #",
+                "#                        #LLL# ###   #",
+                "#                        #####       #",
+                "#                        #   #FFFF## #",
+                "#AAAAAAAAA#LLLLLLLLLLLLLL#   #       #",
+                "##########################   #LLLL## #",
+                "#wwwwwmwwwwwmwwwwwmwwwwwmww# ######  #",
+                "#Twmwwwwwmwwwwwmwwwwwmwwwww#         #",
+                "######################################",
+            ],
+            ["P@"]
+        ],
+        [
+            [
+                "                           ",
+                "                           ",
+                "    #  FFFF   FFFFF   F  #F",
+                "#                        #F",
+                "                  LLLLLLL#F",
+                "  # LLLLLLLLL     ########F",
+                "    #########            #F",
+                "#                   AAAAA#F",
+                "##############  ##########F",
+                "               ##          ",
+                "              #            ",
+                "              #            ",
+                " PS #A#    !  #@  L  L   L ",
+                "###########################"
+            ],
+            [
+                "##################################################",
+                "#                                                 ",
+                "#PSFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "###FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#                                               @#",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA##"
+            ],
+            [
+                "###########################",
+                "#                         #",
+                "# PS                      #",
+                "#####                     #",
+                "#    FFFFFFFFFFFFFFFFFFFFF#",
+                "#FFFFFFFFFFFFFFFFFFFFFFF  #",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "#      FFFFFFFFFFFF##FF   #",
+                "#  FFFFFF       FFFFF  A  #",
+                "# FFFFFFFFFFFFFFFFFFFFF#F #",
+                "#      FFFFFFFAFF FFFFFF  #",
+                "#      FAF   F#FFF  FFL#  #",
+                "#FFFFF ###FFFFFFFF FFFF   #",
+                "#      FFFFFFFFF #!!!!#   #",
+                "#  FFFFFFFFFFF FFFFFFFF FF#",
+                "#       FFFFFFFFFFFFFFFF L#",
+                "# AAFFFFF   FFFF LLLF  LLL#",
+                "#FFFFFFFFFFFFFFFFFFFFFFFFF#",
+                "# FFFFFFF   FFFFFFF  FFF  #",
+                "#    FFFFFFF FFFFFFFFFF@  #",
+                "#FFFFFFFFFF################"
+            ],
+            [
+                "############################",
+                "                            ",
+                "                            ",
+                "    F  F   # F F F  F  F   #",
+                "                            ",
+                "#                           ",
+                "                            ",
+                "                            ",
+                "  #                         ",
+                "  # #                       ",
+                "  #                         ",
+                "  #    FFFFFFFFF            ",
+                "  #                #        ",
+                "  #                  #      ",
+                "  #                         ",
+                "  #            LLL#LLL#     ",
+                "ww#######################   ",
+                "aw#      #                 #",
+                "#ww      #               #a#",
+                "www                     ####",
+                "awa#F#       ######         ",
+                "#w#   ####           ###    ",
+                "ww#                  #      ",
+                "wa#       ##         #     w",
+                "@##         #        ##F#  w",
+                "#    F    m#      FFF#    w#",
+                "    #w####################w#",
+                "PS #wwwwwwwwwwwwwwwwwwwwwww#",
+                "##L#aaaaaaaaaaaaaaaaaaaaaaa#"
+            ],
+            [
+                "             #              ",
+                "                            ",
+                "                           @",
+                "    F  F   # F F F  F  F   #",
+                "                            ",
+                "#                           ",
+                "                            ",
+                " #                          ",
+                "                            ",
+                "    #                       ",
+                "                            ",
+                "       FFFFFFFFF            ",
+                "                   #        ",
+                "                     #      ",
+                "                            ",
+                "                    #       ",
+                "   F#    ###FF####          ",
+                "         #                  ",
+                "#        #                  ",
+                "                            ",
+                "   #F#       ######         ",
+                "       ####           ##    ",
+                "                            ",
+                "                           #",
+                "                      #F#   ",
+                "                 FFF        ",
+                "            ###             ",
+                "PS     FFF                  ",
+                "##FFFF                      "
+            ],
+            ["P@"]
+        ]
+    ];
+    this.mode=0; // 0:regular, 1:hardcore(user-made)
+    this.level=0; // keep track of which level to access
+    this.levelSize=[0,0]; // level dimensions
+    // create a camera
+    this.cam=new Camera(0,0,width,height,0,0,this.levelSize[0],this.levelSize[1],8);
+    // the sign's messages
+    this.messages=[
+        [
+            ["This is the portal that brings\nyou to the next level","Don't touch the spikes","Welcome to Cubix 2!","Watch out for the monster!\nJump on it to kill it"],
+            ["You can't walk on lava,\nbut you can swim!","Press 'R' to restart the level"],
+            ["Don't be surprised if\n these blocks fall!","Whew! Pretty intense!"],
+            ["Time for a little swim!"],
+            ["This is a teleporter"],
+        ],
+        [
+            ["This level\nwas designed by\nÇαϻόท_ℒøϣґý®"],
+            ["This level\nwas designed by\nD.P."],
+            ["This level\nwas designed by\nT#1B12P"],
+            ["This level was designed by\nSupernova"],
+            ["This level\nwas designed by\nT#1B12P"]
+        ]
+    ];
+};
+
+Game.prototype.loadMap=function(){
+    for(var col=0; col<this.levels[this.mode][this.level].length; col++){
+    for(var row=0; row<this.levels[this.mode][this.level][col].length; row++){
+        var s=this.levels[this.mode][this.level][col][row];
+        if(s==="P"){
+            players.add(row*30,col*30,30,30,[RIGHT,LEFT,UP,DOWN],color(255, 0, 0));
+        }
+        if(s==="#"){
+            blocks.add(row*30,col*30,30,30,color(100, 100, 100));
+        }
+        if(s==="A"){
+            spikes.add(row*30,col*30,30,30);
+        }
+        if(s==="a"){
+            spikes.add(row*30,col*30,30,30);
+            water.add(row*30,col*30,30,30);
+        }
+        if(s==="@"){
+            portals.add(row*30,col*30,30,30);
+        }
+        if(s==="S"){
+            signs.add(row*30,col*30,30,30,this.messages[this.mode][this.level][signs.on]);
+        }
+        if(s==="s"){
+            signs.add(row*30,col*30,30,30,this.messages[this.mode][this.level][signs.on]);
+            water.add(row*30,col*30,30,30);
+        }
+        if(s==="!"){
+            monsters.add(row*30,col*30,30,30,color(0, 150, 0));
+        }
+        if(s==="m"){
+            monsters.add(row*30,col*30,30,30,color(0, 150, 0));
+            water.add(row*30,col*30,30,30);
+        }
+        if(s==="F"){
+            fallBlocks.add(row*30,col*30,30,30,color(200, 80, 0));
+        }
+        if(s==="L"){
+            lava.add(row*30,col*30,30,30);
+        }
+        if(s==="w"){
+            water.add(row*30,col*30,30,30);
+        }
+        if(s==="T"){
+            teleporters.add(row*30,col*30,30,30,teleporters.on);
+        }
+        
+        this.levelSize[0]=this.levels[this.mode][this.level][col].length*30;
+        this.levelSize[1]=this.levels[this.mode][this.level].length*30;
+    }
+    }
+};
+
+var hT=255;
+var g;
+// apply object's methods to the draw loop
+Game.prototype.apply=function(){
+    // adjust the level's dimensions accordingly
+    this.cam.levelWidth=this.levelSize[0];
+    this.cam.levelHeight=this.levelSize[1];
+    
+    var self=this;
+    g=self;
+    
+    this.cam.follow(players[0]);
+    space.apply(this.cam);
+    blocks.apply(this.cam);
+    fallBlocks.apply(this.cam,players,blocks);
+    portals.apply(this.cam,players);
+    spikes.apply(this.cam,players);
+    signs.apply(this.cam,players);
+    monsters.apply(this.cam,players,blocks);
+    players.apply(this.cam,blocks,fallBlocks);
+    lava.apply(this.cam,players);
+    water.apply(this.cam,players);
+    teleporters.apply(this.cam,players);
+    if(hT>0&&this.mode===1){
+        fill(0, 0, 0,hT);
+        textAlign(CENTER,CENTER);
+        textSize(25);
+        text("Welcome to the Hardcore levels!\nThese levels have been\nmade by other users!",width/2,height/2); 
+        hT-=1;
+    }
+    
+    if(this.level>=this.levels[0].length-1){
+        objects.remove();
+        this.mode=1;
+        this.level=0;
+        self.loadMap();
+    }
+    
+    for(var i=0; i<portals.length; i++){
+        if(portals[i].complete){// to next level
+            signs.on=0;
+            teleporters.on=0;
+            objects.remove();
+            self.level++;
+            self.loadMap();
+        }
+    }
+    
+    for(var i=0; i<players.length; i++){
+        // constrain the player from falling off the screen
+        if(players[i].x<0){
+            players[i].x=0;
+        }
+        if(players[i].x+players[i].w>this.levelSize[0]){
+            players[i].x=this.levelSize[0]-players[i].w;
+        }
+        if(players[i].y>this.levelSize[1]||keys[82]){
+            players[i].dead=true;
+        }
+        
+        if(players[i].dead){
+            players[i].deathCounter++;
+            if(players[i].deathCounter>100){
+                if(signs.length>0){
+                    signs.on=this.messages[this.mode][this.level].length-signs.length;
+                }
+                if(teleporters.length>0){
+                    teleporters.on=0;
+                }
+                objects.remove();
+                self.loadMap();
+                this.deathCounter=0;
+                this.dead=false;
+                this.health=100;
+            }
+        }
+    }
+    
+    noStroke();
+    fill(screenColor[0],screenColor[1],screenColor[2],transparency);
+    rect(0,0,width,height);
+};
+
+// background stuff
+{
+var PixelRange=function(y,smoothness){
+    this.y=y;
+    this.smooth=smoothness;
+    this.heights=[];
+};
+
+PixelRange.prototype.display=function(){
+    while(this.heights.length<40){
+        this.heights.push(random(this.smooth));
+    }
+    for(var row=0; row<20; row++){
+        noStroke();
+        
+        var h=this.heights[row];
+        fill(82, 184, 48);
+        rect(row*20,noise(row)*h+this.y,20,height-noise(row));
+    }
+};
+
+var Cloud=function(x,y,w,h){
+    this.x=x;
+    this.y=y;
+    this.h=h;
+    this.w=w;
+    this.speed=random(0.1,0.4);
+};
+
+Cloud.prototype.draw= function() {
+    stroke(255, 255, 255);
+    fill(255, 255, 255);
+    rect(this.x,this.y+this.h-this.h/4,this.w,this.h/4);
+    rect(this.x+this.w/10,this.y+this.h/2,this.w/1.2,this.h/4);
+    rect(this.x+this.w/4,this.y+this.h/4,this.w/1.8,this.h/4);
+    rect(this.x+this.w/6,this.y+this.h/6,this.w/5,this.h/2);
+    rect(this.x+this.w-this.w/1.7,this.y+this.h/12,this.w/4,this.h/2);
+    
+};
+
+var Clouds=function(max){
+    this.max=max;
+    this.clouds=[];
+    this.side=round(random(1));
+};
+
+Clouds.prototype.manage=function(){
+    while(this.clouds.length<this.max){
+        this.clouds.push(new Cloud(random(width),random(100),random(80,100),random(50,70)));
+    }
+};
+
+Clouds.prototype.update=function(){
+    for(var i=0; i<this.clouds.length; i++){
+        if(this.side===0){
+            this.clouds[i].x+=this.clouds[i].speed;
+        }else{
+            this.clouds[i].x-=this.clouds[i].speed;
+        }
+        this.clouds[i].draw();
+        
+        if(this.clouds[i].x>width){
+            this.clouds[i].x=-this.clouds[i].w;
+        }
+        if(this.clouds[i].x+this.clouds[i].w<0){
+            this.clouds[i].x=width;
+        }
+    }
+};
+
+var Sun=function(x,y,w,h){
+    this.x=x;
+    this.y=y;
+    this.w=w;
+    this.h=h;
+};
+
+Sun.prototype.draw= function() {
+    noStroke();
+    
+    fill(255, 150, 0,150);
+    rect(this.x,this.y,this.w,this.h,10);
+    
+    fill(255, 200, 0);
+    rect(this.x+this.w/5.5,this.y+this.h/5.5,this.w/1.5,this.h/1.5,10);
+};
+}
+
+var cloudSystem=new Clouds(6);
+var range=new PixelRange(200,40);
+var sun=new Sun(30,30,80,80);
+
+var gameState="menu";
+
+var game=new Game();
+draw= function() {
+    background(0, 200, 255);
+    range.display();
+    sun.draw();
+    cloudSystem.manage();
+    cloudSystem.update();
+    switch(gameState){
+        case "menu":
+            textSize(50);
+            textAlign(CENTER,CENTER);
+            fill(0, 0, 0);
+            text("Cubix 2!",width/2,50);
+            textSize(15);
+            text("Game made by Ryan Kee", 200, 350);
+            if(button(150,150,100,30,"Play!",15)){
+                gameState="inGame";
+                game.loadMap();
+            }
+            if(button(150,200,100,30,"Level Select",15)){
+                gameState="levelSelect";
+            }
+            break;
+            case "levelSelect":
+                textSize(25);
+                textAlign(CENTER,CENTER);
+                fill(0, 0, 0);
+                text("Level Select",width/2,50);
+                textSize(20);
+                text("Regular",width/2,100);
+                for(var i=0; i<game.levels[0].length-1; i++){
+                    var x, y;
+                    if(i<5){
+                        x=50;
+                        y=125;
+                    }else if(i<10){
+                        x=-275;
+                        y=190;
+                    }
+                    if(button(i*65+x,y,40,40,i+1,12)){
+                        objects.remove();
+                        game.level=i;
+                        game.loadMap();
+                        gameState="inGame";
+                    }
+                }
+                textSize(20);
+                text("Hardcore(user-made)",width/2,250);
+                for(var i=0; i<game.levels[1].length-1; i++){
+                    var x,y;
+                    if(i<5){
+                        x=50;
+                        y=275;
+                    }else if(i<10){
+                        x=-275;
+                        y=340;
+                    }
+                    if(button(i*65+x,y,40,40,i+1,12)){
+                        objects.remove();
+                        game.level=i;
+                        game.mode=1;
+                        game.loadMap();
+                        gameState="inGame";
+                    }
+                }
+                break;
+        case "inGame":
+            game.apply();
+            break;
+    }
+};
+</script>
+</body>
+</html>
